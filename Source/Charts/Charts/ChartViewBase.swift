@@ -15,6 +15,9 @@ import CoreGraphics
 
 #if !os(OSX)
     import UIKit
+#else
+    import Foundation
+    import CoreGraphics
 #endif
 
 @objc
