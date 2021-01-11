@@ -9,8 +9,12 @@
 //  https://github.com/danielgindi/Charts
 //
 
+#if !os(OSX)
+import UIKit
+#else
 import Foundation
 import CoreGraphics
+#endif
 
 
 public protocol AxisRenderer: Renderer {
