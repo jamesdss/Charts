@@ -18,8 +18,15 @@ let package = Package(
             type: .dynamic,
             targets: ["Charts"])
     ],
+    dependencies: [
+            // Dependencies declare other packages that this package depends on.
+             .package(url: "https://github.com/apple/swift-algorithms", from: "0.0.2")
+        ],
     targets: [
-        .target(name: "Charts")
+        .target(
+                    name: "Charts",
+                    dependencies: [.product(name: "Algorithms", package: "swift-algorithms")]
+                )
     ],
     swiftLanguageVersions: [.v5]
 )
