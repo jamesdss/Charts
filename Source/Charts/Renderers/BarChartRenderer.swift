@@ -277,7 +277,7 @@ open class BarChartRenderer: BarLineScatterCandleBubbleRenderer
         for i in barData.indices
         {
             guard let set = barData[i] as? BarChartDataSetProtocol else {
-                fatalError("Datasets for BarChartRenderer must conform to IBarChartDataset")
+                fatalError("Datasets for BarChartRenderer must conform to BarChartDataSetProtocol")
             }
 
             guard set.isVisible else { continue }
@@ -303,7 +303,6 @@ open class BarChartRenderer: BarLineScatterCandleBubbleRenderer
         
         let borderWidth = dataSet.barBorderWidth
         let borderColor = dataSet.barBorderColor
-        let drawBorder = borderWidth > 0.0
         
         context.saveGState()
         defer { context.restoreGState() }
@@ -336,8 +335,7 @@ open class BarChartRenderer: BarLineScatterCandleBubbleRenderer
                 _barShadowRectBuffer.origin.y = viewPortHandler.contentTop
                 _barShadowRectBuffer.size.height = viewPortHandler.contentHeight
                 
-                context.setFillColor(dataSet.barShadowColor.cgColor)
-                context.fill(_barShadowRectBuffer)
+                renderShadow(with: dataSet.barShadowColor, for: _barShadowRectBuffer, in: context, dataSet: dataSet, entry: e)
             }
         }
 
@@ -346,22 +344,20 @@ open class BarChartRenderer: BarLineScatterCandleBubbleRenderer
         // draw the bar shadow before the values
         if dataProvider.isDrawBarShadowEnabled
         {
-            for barRect in buffer where viewPortHandler.isInBoundsLeft(barRect.origin.x + barRect.size.width)
+            for (index, barRect) in buffer.enumerated() where viewPortHandler.isInBoundsLeft(barRect.origin.x + barRect.size.width)
             {
                 guard viewPortHandler.isInBoundsRight(barRect.origin.x) else { break }
-
-                context.setFillColor(dataSet.barShadowColor.cgColor)
-                context.fill(barRect)
+                
+                renderShadow(with: dataSet.barShadowColor,
+                             for: barRect,
+                             in: context,
+                             dataSet: dataSet,
+                             entry: dataSet.entryForIndex(index) as? BarChartDataEntry)
             }
         }
         
         let isSingleColor = dataSet.colors.count == 1
-        
-        if isSingleColor
-        {
-            context.setFillColor(dataSet.color(atIndex: 0).cgColor)
-        }
-        
+
         // In case the chart is stacked, we need to accomodate individual bars within accessibilityOrdereredElements
         let isStacked = dataSet.isStacked
         let stackSize = isStacked ? dataSet.stackSize : 1
@@ -369,35 +365,32 @@ open class BarChartRenderer: BarLineScatterCandleBubbleRenderer
         for j in buffer.indices
         {
             let barRect = buffer[j]
-            
+
             guard viewPortHandler.isInBoundsLeft(barRect.origin.x + barRect.size.width) else { continue }
             guard viewPortHandler.isInBoundsRight(barRect.origin.x) else { break }
 
-            if !isSingleColor
-            {
-                // Set the color for the currently drawn value. If the index is out of bounds, reuse colors.
-                context.setFillColor(dataSet.color(atIndex: j).cgColor)
-            }
+            renderFill(with: dataSet.color(atIndex: isSingleColor ? 0 : j),
+                       for: barRect,
+                       in: context,
+                       dataSet: dataSet,
+                       entry: dataSet.entryForIndex(j) as? BarChartDataEntry)
             
-            context.fill(barRect)
-            
-            if drawBorder
-            {
-                context.setStrokeColor(borderColor.cgColor)
-                context.setLineWidth(borderWidth)
-                context.stroke(barRect)
-            }
+            renderBorder(with: borderColor,
+                         width: borderWidth,
+                         for: barRect,
+                         in: context,
+                         dataSet: dataSet,
+                         entry: dataSet.entryForIndex(j) as? BarChartDataEntry)
 
             // Create and append the corresponding accessibility element to accessibilityOrderedElements
             if let chart = dataProvider as? BarChartView
             {
-                let element = createAccessibleElement(
-                    withIndex: j,
-                    container: chart,
-                    dataSet: dataSet,
-                    dataSetIndex: index,
-                    stackSize: stackSize
-                ) { (element) in
+                let element = createAccessibleElement(withIndex: j,
+                                                      container: chart,
+                                                      dataSet: dataSet,
+                                                      dataSetIndex: index,
+                                                      stackSize: stackSize)
+                { (element) in
                     element.accessibilityFrame = barRect
                 }
 
@@ -537,9 +530,8 @@ open class BarChartRenderer: BarLineScatterCandleBubbleRenderer
                     // if we have stacks
                     
                     var bufferIndex = 0
-                    let lastIndex = ceil(Double(dataSet.entryCount) * animator.phaseX)
-
-                    for index in 0 ..< Int(lastIndex)
+                    
+                    for index in 0 ..< Int(ceil(Double(dataSet.entryCount) * animator.phaseX))
                     {
                         guard let e = dataSet.entryForIndex(index) as? BarChartDataEntry else { continue }
                         
@@ -550,7 +542,7 @@ open class BarChartRenderer: BarLineScatterCandleBubbleRenderer
                         let x = rect.origin.x + rect.size.width / 2.0
                         
                         // we still draw stacked bars, but there is one non-stacked in between
-                        if let values = vals
+                        if let vals = vals
                         {
                             // draw stack values
                             var transformed = [CGPoint]()
@@ -558,10 +550,11 @@ open class BarChartRenderer: BarLineScatterCandleBubbleRenderer
                             var posY = 0.0
                             var negY = -e.negativeSum
 
-                            for value in values
+                            for k in vals.indices
                             {
-                                let y: Double
-                                
+                                let value = vals[k]
+                                var y: Double
+
                                 if value == 0.0 && (posY == 0.0 || negY == 0.0)
                                 {
                                     // Take care of the situation of a 0.0 value, which overlaps a non-zero bar
@@ -583,9 +576,9 @@ open class BarChartRenderer: BarLineScatterCandleBubbleRenderer
 
                             trans.pointValuesToPixel(&transformed)
 
-                            for (value, transformed) in zip(values, transformed)
+                            for (val, transformed) in zip(vals, transformed)
                             {
-                                let drawBelow = (value == 0.0 && negY == 0.0 && posY > 0.0) || value < 0.0
+                                let drawBelow = (val == 0.0 && negY == 0.0 && posY > 0.0) || val < 0.0
                                 let y = transformed.y + (drawBelow ? negOffset : posOffset)
 
                                 guard viewPortHandler.isInBoundsRight(x) else { break }
@@ -598,7 +591,7 @@ open class BarChartRenderer: BarLineScatterCandleBubbleRenderer
                                     drawValue(
                                         context: context,
                                         value: formatter.stringForValue(
-                                            value,
+                                            val,
                                             entry: e,
                                             dataSetIndex: dataSetIndex,
                                             viewPortHandler: viewPortHandler),
@@ -710,10 +703,6 @@ open class BarChartRenderer: BarLineScatterCandleBubbleRenderer
                 guard isInBoundsX(entry: e, dataSet: set) else { continue }
                 
                 let trans = dataProvider.getTransformer(forAxis: set.axisDependency)
-                
-                context.setFillColor(set.highlightColor.cgColor)
-                context.setAlpha(set.highlightAlpha)
-                
                 let isStack = high.stackIndex >= 0 && e.isStacked
                 
                 let y1: Double
@@ -741,10 +730,8 @@ open class BarChartRenderer: BarLineScatterCandleBubbleRenderer
                 }
                 
                 prepareBarHighlight(x: e.x, y1: y1, y2: y2, barWidthHalf: barData.barWidth / 2.0, trans: trans, rect: &barRect)
-                
                 setHighlightDrawPos(highlight: high, barRect: barRect)
-                
-                context.fill(barRect)
+                render(highlight: high, with: barRect, in: context, dataSet: set, entry: e)
             }
         }
     }
@@ -831,5 +818,77 @@ open class BarChartRenderer: BarLineScatterCandleBubbleRenderer
         modifier(element)
 
         return element
+    }
+
+    // MARK: - Rendering override points -
+
+    /// Render the fill of a (stacked) bar.
+    ///
+    /// - Parameters:
+    ///   - color: the color to fill the bar with.
+    ///   - rect: the rectangle of the (stacked) bar.
+    ///   - context: the drawing context.
+    ///   - dataset: the dataset that is being rendered.
+    ///   - entry: the entry that is being rendered.
+    @objc open func renderFill(with color: NSUIColor, for rect: CGRect, in context: CGContext, dataSet: BarChartDataSetProtocol, entry: BarChartDataEntry?) {
+        context.saveGState()
+        context.setFillColor(color.cgColor)
+        context.fill(rect)
+        context.restoreGState()
+    }
+
+    /// Render the border of a (stacked) bar.
+    ///
+    /// - Parameters:
+    ///   - color: the border color.
+    ///   - lineWidth: the line width width of the border.
+    ///   - rect: the rectangle of the (stacked) bar.
+    ///   - context: the drawing context.
+    ///   - dataset: the dataset that is being rendered.
+    ///   - entry: the entry that is being rendered.
+    @objc open func renderBorder(with color: NSUIColor,
+                                 width lineWidth: CGFloat,
+                                 for rect: CGRect,
+                                 in context: CGContext,
+                                 dataSet: BarChartDataSetProtocol,
+                                 entry: BarChartDataEntry?) {
+        guard lineWidth > 0 else { return }
+        
+        context.saveGState()
+        context.setStrokeColor(color.cgColor)
+        context.setLineWidth(lineWidth)
+        context.stroke(rect)
+        context.restoreGState()
+    }
+
+    /// Render the (stacked) highlight.
+    ///
+    /// - Parameters:
+    ///   - highlight: the highlight to render.
+    ///   - rect: the rectangle of the (stacked) bar.
+    ///   - context: the drawing context.
+    ///   - dataset: the dataset that is being rendered.
+    ///   - entry: the entry that is being rendered.
+    @objc open func render(highlight: Highlight, with rect: CGRect, in context: CGContext, dataSet: BarChartDataSetProtocol, entry: BarChartDataEntry) {
+        context.saveGState()
+        context.setFillColor(dataSet.highlightColor.cgColor)
+        context.setAlpha(dataSet.highlightAlpha)
+        context.fill(rect)
+        context.restoreGState()
+    }
+    
+    /// Render the (stacked) shadow.
+    ///
+    /// - Parameters:
+    ///   - color: the shadow color.
+    ///   - rect: the rectangle of the (stacked) bar.
+    ///   - context: the drawing context.
+    ///   - dataset: the dataset that is being rendered.
+    ///   - entry: the entry that is being rendered.
+    @objc open func renderShadow(with color: NSUIColor, for rect: CGRect, in context: CGContext, dataSet: BarChartDataSetProtocol, entry: BarChartDataEntry?) {
+        context.saveGState()
+        context.setFillColor(color.cgColor)
+        context.fill(rect)
+        context.restoreGState()
     }
 }
