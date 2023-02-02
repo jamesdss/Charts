@@ -20,9 +20,9 @@ import CoreGraphics
 @objc(ChartYAxisRenderer)
 open class YAxisRenderer: NSObject, AxisRenderer
 {
-    public let viewPortHandler: ViewPortHandler
-    public let axis: YAxis
-    public let transformer: Transformer?
+    @objc public let viewPortHandler: ViewPortHandler
+    @objc public let axis: YAxis
+    @objc public let transformer: Transformer?
 
     @objc public init(viewPortHandler: ViewPortHandler, axis: YAxis, transformer: Transformer?)
     {
@@ -48,7 +48,7 @@ open class YAxisRenderer: NSObject, AxisRenderer
         let labelPosition = axis.labelPosition
         
         let xPos: CGFloat
-        let textAlign: NSTextAlignment
+        let textAlign: TextAlignment
         
         if dependency == .left
         {
@@ -127,7 +127,7 @@ open class YAxisRenderer: NSObject, AxisRenderer
         fixedPosition: CGFloat,
         positions: [CGPoint],
         offset: CGFloat,
-        textAlign: NSTextAlignment)
+        textAlign: TextAlignment)
     {
         let labelFont = axis.labelFont
         let labelTextColor = axis.labelTextColor
@@ -297,14 +297,14 @@ open class YAxisRenderer: NSObject, AxisRenderer
             let label = l.label
             
             // if drawing the limit-value label is enabled
-            guard l.drawLabelEnabled, !label.isEmpty else { return }
+            guard l.drawLabelEnabled, !label.isEmpty else { continue }
 
             let labelLineHeight = l.valueFont.lineHeight
 
             let xOffset = 4.0 + l.xOffset
             let yOffset = l.lineWidth + labelLineHeight + l.yOffset
 
-            let align: NSTextAlignment
+            let align: TextAlignment
             let point: CGPoint
 
             switch l.labelPosition
